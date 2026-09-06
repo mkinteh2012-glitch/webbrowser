@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebBrowser Platform</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #eef3f8;
+      color: #1a2b3c;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Password Overlay Styles */
+    #password-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+
+    .modal-box {
+      background: #ffffff;
+      padding: 24px;
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 320px;
+      text-align: center;
+    }
+
+    .modal-box h3 {
+      margin: 0;
+      font-size: 18px;
+      color: #1a2b3c;
+    }
+
+    .modal-box input {
+      padding: 10px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 14px;
+      outline: none;
+    }
+
+    .modal-box input:focus {
+      border-color: #0b5fff;
+    }
+
+    #error-trigger {
+      color: #ef4444;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 4px;
+      display: none;
+      text-decoration: underline;
+    }
+
+    /* Platform Controls & Navbar */
+    #controls {
+      height: 56px;
+      padding: 0 16px;
+      background: #ffffff;
+      border-bottom: 1px solid #dbe4ee;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 1px 4px rgba(20, 60, 120, 0.06);
+    }
+
+    #brand {
+      font-weight: 600;
+      font-size: 15px;
+      color: #0b5fff;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    #brand-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #0b5fff;
+    }
+
+    #divider {
+      width: 1px;
+      height: 24px;
+      background: #e2e8f0;
+      margin: 0 4px;
+    }
+
+    #status-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: #5b6b7c;
+      padding: 5px 10px;
+      border-radius: 20px;
+      background: #f4f7fa;
+    }
+
+    #status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #b9c3ce;
+      transition: background 0.2s ease;
+    }
+
+    #status-dot.connecting {
+      background: #f5a623;
+      animation: pulse 1s infinite;
+    }
+
+    #status-dot.active {
+      background: #22c55e;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .spacer { flex: 1; }
+
+    button {
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      transition: background 0.15s ease, opacity 0.15s ease;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+
+    #start-btn {
+      background: #0b5fff;
+      color: #ffffff;
+    }
+
+    #start-btn:hover:not(:disabled) {
+      background: #0a52dd;
+    }
+
+    #stop-btn {
+      background: #ffffff;
+      color: #d33;
+      border: 1px solid #f0c7c7;
+    }
+
+    #stop-btn:hover:not(:disabled) {
+      background: #fff3f3;
+    }
+
+    .spinner {
+      width: 13px;
+      height: 13px;
+      border: 2px solid rgba(255,255,255,0.4);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+
+    #start-btn.loading .spinner {
+      display: inline-block;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    #stage {
+      position: relative;
+      width: 100vw;
+      height: calc(100vh - 56px);
+      background: #ffffff;
+    }
+
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    iframe.loaded {
+      opacity: 1;
+    }
+
+    .screen {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      background: #f7fafd;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .screen.hidden {
+      display: none;
+    }
+
+    .screen svg {
+      width: 44px;
+      height: 44px;
+      opacity: 0.45;
+      color: #0b5fff;
+    }
+
+    .screen h3 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: #33475b;
+    }
+
+    .screen p {
+      margin: 0;
+      font-size: 13.5px;
+      color: #8fa3b8;
+      max-width: 320px;
+      line-height: 1.5;
+    }
+
+    #loading-screen .big-spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid #d6e4ff;
+      border-top-color: #0b5fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    #error-screen {
+      color: #b3261e;
+    }
+
+    #error-screen button {
+      background: #0b5fff;
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Password Overlay -->
+  <div id="password-modal">
+    <div class="modal-box">
+      <h3>Enter Password</h3>
+      <input type="password" id="pwd-input" placeholder="Type password..." />
+      <span id="error-trigger">Incorrect</span>
+    </div>
+  </div>
+
+  <div id="controls">
+    <div id="brand"><span id="brand-dot"></span>WebBrowser</div>
+    <div id="divider"></div>
+    <div id="status-pill">
+      <span id="status-dot"></span>
+      <span id="status-text">Not connected</span>
+    </div>
+    <div class="spacer"></div>
+    <button id="start-btn">
+      <span class="spinner"></span>
+      <span id="start-label">Start Session</span>
+    </button>
+    <button id="stop-btn" disabled>Stop Session</button>
+  </div>
+
+  <div id="stage">
+
+    <div class="screen" id="idle-screen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="3" y="4" width="18" height="16" rx="2"/>
+        <path d="M3 9h18"/>
+      </svg>
+      <h3>No active session</h3>
+      <p>Click "Start Session" to launch your isolated browser environment.</p>
+    </div>
+
+    <div class="screen hidden" id="loading-screen">
+      <div class="big-spinner"></div>
+      <h3>Setting up your browser</h3>
+      <p>This usually takes a few seconds while the environment starts up.</p>
+    </div>
+
+    <div class="screen hidden" id="error-screen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="12" r="9"/>
+        <path d="M12 8v5M12 16h.01"/>
+      </svg>
+      <h3>Couldn't start session</h3>
+      <p id="error-message">Something went wrong. Please try again.</p>
+      <button id="retry-btn">Try Again</button>
+    </div>
+
+    <iframe id="browser-frame" src="about:blank" allow="fullscreen"></iframe>
+
+  </div>
+
+  <script>
+    // Password Overlay Elements
+    const pwdModal = document.getElementById('password-modal');
+    const pwdInput = document.getElementById('pwd-input');
+    const errorTrigger = document.getElementById('error-trigger');
+
+    // Display 'Incorrect' trigger ONLY when pressing Enter
+    pwdInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        if (pwdInput.value.trim().length > 0) {
+          errorTrigger.style.display = 'inline-block';
+        } else {
+          errorTrigger.style.display = 'none';
+        }
+      }
+    });
+
+    // Hide error trigger if user types new input
+    pwdInput.addEventListener('input', () => {
+      errorTrigger.style.display = 'none';
+    });
+
+    // Unlocks overlay when clicking the 'Incorrect' text
+    errorTrigger.addEventListener('click', () => {
+      pwdModal.style.display = 'none';
+    });
+
+    // Main App Controls
+    const startBtn = document.getElementById('start-btn');
+    const startLabel = document.getElementById('start-label');
+    const stopBtn = document.getElementById('stop-btn');
+    const retryBtn = document.getElementById('retry-btn');
+    const iframe = document.getElementById('browser-frame');
+    const statusDot = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+    const errorMessage = document.getElementById('error-message');
+
+    const screens = {
+      idle: document.getElementById('idle-screen'),
+      loading: document.getElementById('loading-screen'),
+      error: document.getElementById('error-screen'),
+    };
+
+    let currentSessionId = null;
+
+    function showScreen(name) {
+      Object.values(screens).forEach(s => s.classList.add('hidden'));
+      iframe.classList.remove('loaded');
+      if (name && screens[name]) screens[name].classList.remove('hidden');
+    }
+
+    function setStatus(state, label) {
+      statusDot.className = state;
+      statusText.innerText = label;
+    }
+
+    async function startSession() {
+      startBtn.disabled = true;
+      startBtn.classList.add('loading');
+      startLabel.innerText = 'Starting...';
+      setStatus('connecting', 'Connecting...');
+      showScreen('loading');
+
+      try {
+        const res = await fetch('/api/session/start', { method: 'POST' });
+        const data = await res.json();
+
+        if (!data.success) throw new Error(data.error || 'Failed to start session.');
+
+        currentSessionId = data.sessionId;
+
+        setTimeout(() => {
+          iframe.src = `${data.streamUrl}&reconnect=true&reconnect_delay=1000`;
+          iframe.onload = () => iframe.classList.add('loaded');
+          showScreen(null);
+          startBtn.classList.remove('loading');
+          startLabel.innerText = 'Session Active';
+          stopBtn.disabled = false;
+          setStatus('active', 'Connected');
+        }, 3500);
+
+      } catch (err) {
+        console.error(err);
+        errorMessage.innerText = err.message || 'Failed to contact backend server.';
+        showScreen('error');
+        startBtn.disabled = false;
+        startBtn.classList.remove('loading');
+        startLabel.innerText = 'Start Session';
+        setStatus('', 'Not connected');
+      }
+    }
+
+    async function stopSession() {
+      if (!currentSessionId) return;
+
+      stopBtn.disabled = true;
+      stopBtn.innerText = 'Stopping...';
+      setStatus('connecting', 'Disconnecting...');
+
+      try {
+        await fetch('/api/session/stop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId: currentSessionId })
+        });
+      } catch (err) {
+        console.error(err);
+      }
+
+      iframe.src = 'about:blank';
+      currentSessionId = null;
+      showScreen('idle');
+      startBtn.disabled = false;
+      startLabel.innerText = 'Start Session';
+      stopBtn.innerText = 'Stop Session';
+      stopBtn.disabled = true;
+      setStatus('', 'Not connected');
+    }
+
+    startBtn.addEventListener('click', startSession);
+    stopBtn.addEventListener('click', stopSession);
+    retryBtn.addEventListener('click', startSession);
+  </script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "name": "webbrowser",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/backend/server.js",
+  "scripts": {
+    "start": "node src/backend/server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "dockerode": "^5.0.1",
+    "express": "^5.2.1",
+    "ws": "^8.21.3"
+  }
+}
