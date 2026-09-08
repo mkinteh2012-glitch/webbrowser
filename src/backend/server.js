@@ -231,6 +231,7 @@ server.listen(PORT, () => {
   console.log(` WebBrowser Backend Server Running on http://localhost:${PORT}`);
   if (process.env.CODESPACE_NAME) {
     console.log(` Public URL: https://${process.env.CODESPACE_NAME}-${PORT}.${process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN || 'app.github.dev'}`);
+    makePortPublic(PORT); // ensure the main API port is public on every restart
   }
   console.log(`==================================================\n`);
 });
