@@ -61,14 +61,24 @@ function buildStreamUrl(port) {
 
 /**
  * Forces a forwarded port to Public visibility inside a Codespace.
+ * Retries a few times since Codespaces needs a moment to register
+ * a freshly-opened port as a tunnel before its visibility can be changed.
  * No-op outside Codespaces (e.g. running locally on your own machine).
  */
-function makePortPublic(port) {
+function makePortPublic(port, attempt = 1) {
   if (!process.env.CODESPACE_NAME) return;
+
+  const maxAttempts = 5;
+  const retryDelayMs = 2000;
 
   exec(`gh codespace ports visibility ${port}:public -c ${process.env.CODESPACE_NAME}`, (err, stdout, stderr) => {
     if (err) {
-      console.error(`[WebBrowser] Failed to make port ${port} public:`, stderr || err.message);
+      if (attempt < maxAttempts) {
+        console.log(`[WebBrowser] Port ${port} not forwarded yet, retrying (${attempt}/${maxAttempts})...`);
+        setTimeout(() => makePortPublic(port, attempt + 1), retryDelayMs);
+      } else {
+        console.error(`[WebBrowser] Failed to make port ${port} public after ${maxAttempts} attempts:`, stderr || err.message);
+      }
     } else {
       console.log(`[WebBrowser] Port ${port} set to public.`);
     }
@@ -115,9 +125,6 @@ app.post('/api/session/start', async (req, res) => {
 
     await container.start();
 
-    // Make the new port publicly reachable if running in a Codespace
-    makePortPublic(assignedPort);
-
     // Store active session metadata
     activeSessions.set(sessionId, {
       containerId: container.id,
@@ -128,6 +135,10 @@ app.post('/api/session/start', async (req, res) => {
 
     // Wait for container services (Xvfb, websockify) to initialize
     await delay(3500);
+
+    // Make the new port publicly reachable if running in a Codespace.
+    // Done after the delay above so Codespaces has had time to auto-forward it.
+    makePortPublic(assignedPort);
 
     console.log(`[WebBrowser] Session ${sessionId} ready at port ${assignedPort}.`);
 
@@ -260,7 +271,7 @@ server.listen(PORT, () => {
   console.log(` WebBrowser Backend Server Running on http://localhost:${PORT}`);
   if (process.env.CODESPACE_NAME) {
     console.log(` Public URL: https://${process.env.CODESPACE_NAME}-${PORT}.${process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN || 'app.github.dev'}`);
-    makePortPublic(PORT); // ensure the main API port is public on every restart
+    setTimeout(() => makePortPublic(PORT), 2000); // give Codespaces a moment to register the port first
   }
   console.log(`==================================================\n`);
 });
