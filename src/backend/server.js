@@ -19,9 +19,20 @@ app.use(express.json());
 app.use(express.text({ type: 'text/plain' })); // needed for navigator.sendBeacon payloads
 app.use(express.static(path.join(__dirname, '../../src/frontend')));
 
-// Store active container sessions and dynamic port tracker
+// Store active container sessions
 const activeSessions = new Map();
-let currentPort = 8080;
+
+// Port pool — avoids reusing a port before Docker has actually released it
+const PORT_RANGE_START = 8080;
+const PORT_RANGE_END = 8100;
+const usedPorts = new Set();
+
+function getAvailablePort() {
+  for (let port = PORT_RANGE_START; port <= PORT_RANGE_END; port++) {
+    if (!usedPorts.has(port)) return port;
+  }
+  throw new Error('No available ports in range.');
+}
 
 // Reaper config
 const HEARTBEAT_TIMEOUT_MS = 15000;             // kill if no heartbeat in 15s
@@ -66,12 +77,25 @@ function makePortPublic(port) {
 
 /**
  * POST /api/session/start
- * Dynamically spawns a new Chromium container on an incremental port.
+ * Dynamically spawns a new Chromium container on an available port from the pool.
  */
 app.post('/api/session/start', async (req, res) => {
+  let assignedPort;
+
+  try {
+    assignedPort = getAvailablePort();
+  } catch (poolError) {
+    console.error('[WebBrowser] No ports available:', poolError.message);
+    return res.status(503).json({
+      success: false,
+      error: 'No available capacity right now. Try again shortly.'
+    });
+  }
+
+  usedPorts.add(assignedPort);
+
   try {
     const sessionId = `webbrowser-${Date.now()}`;
-    const assignedPort = currentPort++;
 
     console.log(`[WebBrowser] Creating container ${sessionId} on port ${assignedPort}...`);
 
@@ -116,6 +140,7 @@ app.post('/api/session/start', async (req, res) => {
 
   } catch (error) {
     console.error('[WebBrowser] Error launching container:', error);
+    usedPorts.delete(assignedPort); // release the port back to the pool since the container never came up
     res.status(500).json({
       success: false,
       error: 'Failed to launch virtual browser container.'
@@ -154,10 +179,13 @@ app.post('/api/session/stop', async (req, res) => {
     await container.stop();
 
     activeSessions.delete(sessionId);
+    usedPorts.delete(session.port);
     res.json({ success: true, message: 'Session closed.' });
 
   } catch (error) {
     console.error('[WebBrowser] Error stopping container:', error);
+    const session = activeSessions.get(sessionId);
+    if (session) usedPorts.delete(session.port);
     activeSessions.delete(sessionId); // don't leave it tracked if stop failed on a dead container
     res.status(500).json({ success: false, error: 'Failed to stop session container.' });
   }
@@ -217,6 +245,7 @@ async function reapStaleSessions() {
       } catch (err) {
         console.error(`[WebBrowser] Reaper failed to stop ${sessionId}:`, err.message);
       }
+      usedPorts.delete(session.port);
       activeSessions.delete(sessionId);
     }
   }
